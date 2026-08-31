@@ -76,13 +76,16 @@
                 <div class="flex flex-1 items-center gap-3 w-full md:w-auto">
                     <span class="text-slate-400 text-sm font-semibold whitespace-nowrap">Webサイト指定:</span>
                     <div class="relative flex-1 max-w-md">
-                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">https://</span>
-                        <select id="domainSelect" class="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-lg pl-20 pr-8 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                            <option value="www.mext.go.jp">www.mext.go.jp (文部科学省)</option>
-                            <option value="www.kantei.go.jp">www.kantei.go.jp (首相官邸)</option>
-                            <option value="www.example.com">www.example.com (サンプル)</option>
-                            <option value="news.yahoo.co.jp">news.yahoo.co.jp (Yahoo!ニュース)</option>
-                        </select>
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-sm">https://</span>
+                        <input type="text" id="domainInput" value="www.mext.go.jp" placeholder="例: www.google.com, example.org" list="domainSuggestions" class="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-lg pl-20 pr-4 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono">
+                        <datalist id="domainSuggestions">
+                            <option value="www.mext.go.jp">文部科学省</option>
+                            <option value="www.kantei.go.jp">首相官邸</option>
+                            <option value="www.google.com">Google</option>
+                            <option value="wikipedia.org">Wikipedia</option>
+                            <option value="news.yahoo.co.jp">Yahoo!ニュース</option>
+                            <option value="www.example.com">サンプルドメイン</option>
+                        </datalist>
                     </div>
                 </div>
 
@@ -373,6 +376,54 @@
             }
         };
 
+        // Clean domain string from user input
+        function cleanDomain(input) {
+            let cleaned = input.trim().toLowerCase();
+            cleaned = cleaned.replace(/^https?:\/\//, ''); // Remove http:// or https://
+            cleaned = cleaned.replace(/\/.*$/, '');        // Remove path /...
+            cleaned = cleaned.replace(/:\d+$/, '');         // Remove port number
+            return cleaned || 'www.example.com';
+        }
+
+        // Generate dynamic DNS info for arbitrary domain
+        function getDomainInfo(domain) {
+            if (domainDatabase[domain]) {
+                return domainDatabase[domain];
+            }
+
+            // Generate deterministic IP hash from domain string
+            let hash = 0;
+            for (let i = 0; i < domain.length; i++) {
+                hash = domain.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const ip1 = 150 + (Math.abs(hash) % 50);
+            const ip2 = (Math.abs(hash >> 2) % 200) + 10;
+            const ip3 = (Math.abs(hash >> 4) % 200) + 1;
+            const ip4 = (Math.abs(hash >> 6) % 250) + 1;
+
+            const parts = domain.split('.');
+            const tld = parts.length > 1 ? '.' + parts[parts.length - 1] : '.com';
+            
+            let parentDomain = domain;
+            if (parts.length > 2) {
+                parentDomain = parts.slice(-2).join('.');
+                if (['co.jp', 'go.jp', 'ac.jp', 'ne.jp', 'or.jp', 'com.au', 'co.uk'].includes(parts.slice(-2).join('.')) && parts.length > 3) {
+                    parentDomain = parts.slice(-3).join('.');
+                }
+            }
+
+            return {
+                ip: `${ip1}.${ip2}.${ip3}.${ip4}`,
+                ipv6: `2001:db8:${(Math.abs(hash) % 0xffff).toString(16)}::${ip4}`,
+                mx: `mail.${parentDomain} (pref=10)`,
+                ns: `ns1.${parentDomain}`,
+                cname: "なし (直接Aレコード)",
+                rootServer: `Root-Server (${tld} のネームサーバ案内)`,
+                tldServer: `${tld.toUpperCase()}-TLD-Server (${parentDomain} の権威サーバ案内)`,
+                authServer: `${parentDomain} 権威DNSサーバ`
+            };
+        }
+
         // Simulated DNS Cache State
         const cacheStore = new Set();
 
@@ -447,9 +498,12 @@
             if (isRunning) return;
             isRunning = true;
 
-            const domain = document.getElementById('domainSelect').value;
+            const rawDomain = document.getElementById('domainInput').value;
+            const domain = cleanDomain(rawDomain);
+            document.getElementById('domainInput').value = domain; // Normalization display
+
             const useCache = document.getElementById('cacheToggle').checked;
-            const info = domainDatabase[domain];
+            const info = getDomainInfo(domain);
 
             document.getElementById('btnStart').disabled = true;
             document.getElementById('btnStart').classList.add('opacity-50');
@@ -492,31 +546,31 @@
             // Step 3: Root Server Query
             setNodeActive('cache', false);
             setNodeActive('root', true);
-            updateStepInfo("STEP 3: ルートDNSサーバへの問い合わせ", `「${domain}」のトップレベルドメイン (.jp または .com) を管理するTLDサーバの場所を教えてもらいます。`);
+            updateStepInfo("STEP 3: ルートDNSサーバへの問い合わせ", `「${domain}」の末尾（トップレベルドメイン）を担当するTLDサーバの情報をルートサーバから取得します。`);
             addLog(`[キャッシュDNS] -> [ルートDNS] 「${domain} の管理者は誰ですか？」`, 'req');
             await sleep(2200);
 
-            addLog(`[ルートDNS] -> [キャッシュDNS] 「末尾を管理する TLDサーバを参照してください」`, 'res');
+            addLog(`[ルートDNS] -> [キャッシュDNS] 「${info.rootServer}」`, 'res');
             await sleep(1800);
 
             // Step 4: TLD Server Query
             setNodeActive('root', false);
             setNodeActive('tld', true);
-            updateStepInfo("STEP 4: TLD DNSサーバへの問い合わせ", `TLDサーバに問い合わせ、「${domain}」の詳細情報を保持する権威DNSサーバの場所を取得します。`);
+            updateStepInfo("STEP 4: TLD DNSサーバへの問い合わせ", `TLDサーバに問い合わせ、「${domain}」のゾーンを直接管理する権威DNSサーバの情報を取得します。`);
             addLog(`[キャッシュDNS] -> [TLD DNS] 「${domain} のIPを知る権威サーバはどこですか？」`, 'req');
             await sleep(2200);
 
-            addLog(`[TLD DNS] -> [キャッシュDNS] 「該当ドメインの権威DNSサーバを案内します」`, 'res');
+            addLog(`[TLD DNS] -> [キャッシュDNS] 「${info.tldServer}」`, 'res');
             await sleep(1800);
 
             // Step 5: Authoritative Server Query
             setNodeActive('tld', false);
             setNodeActive('auth', true);
-            updateStepInfo("STEP 5: 権威DNSサーバへの問い合わせ", `ドメインの所有者が管理する「権威DNSサーバ」へ最終的なIPアドレスを問い合わせます。`);
+            updateStepInfo("STEP 5: 権威DNSサーバへの問い合わせ", `ドメインの所有者が管理する「${info.authServer}」へ最終的なIPアドレスを問い合わせます。`);
             addLog(`[キャッシュDNS] -> [権威DNS] 「${domain} のIPアドレスを教えてください」`, 'req');
             await sleep(2200);
 
-            addLog(`[権威DNS] -> [キャッシュDNS] 最終応答: 「IPは ${info.ip} です」`, 'res');
+            addLog(`[権威DNS] -> [キャッシュDNS] 最終応答: 「${domain} のIPは ${info.ip} です」`, 'res');
             await sleep(2000);
 
             // Save to Cache
@@ -528,7 +582,7 @@
             setNodeActive('auth', false);
             setNodeActive('cache', true);
             updateStepInfo("STEP 6: 結果の返答とキャッシュ保存", `キャッシュDNSサーバは取得したIP (${info.ip}) を自身のメモリに記憶（キャッシュ）し、PCへ最終結果を返します。`);
-            addLog(`[キャッシュDNS] データをローカルにキャッシュ保存完了`, 'cache');
+            addLog(`[キャッシュDNS] ${domain} のデータをローカルにキャッシュ保存完了`, 'cache');
             await sleep(1800);
 
             setNodeActive('cache', false);
@@ -556,19 +610,16 @@
 
         // Terminal Tab nslookup Simulator
         function runNslookup() {
-            const domain = document.getElementById('cmdDomain').value.trim();
+            const rawDomain = document.getElementById('cmdDomain').value;
+            const domain = cleanDomain(rawDomain);
+            document.getElementById('cmdDomain').value = domain;
+
             const recordType = document.getElementById('cmdRecordType').value;
             const output = document.getElementById('terminalOutput');
 
             if (!domain) return;
 
-            const info = domainDatabase[domain] || {
-                ip: "192.0.2.123",
-                ipv6: "2001:db8::123",
-                mx: `mail.${domain} (pref=10)`,
-                ns: `ns1.${domain}`,
-                cname: "なし"
-            };
+            const info = getDomainInfo(domain);
 
             let answerSection = '';
             if (recordType === 'A') {

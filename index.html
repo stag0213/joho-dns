@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DNS名前解決・学習シミュレータ | 高校情報Ⅰ</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @keyframes pulse-glow {
+            0%, 100% { opacity: 0.3; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+        }
+        .packet-animation {
+            transition: all 0.8s ease-in-out;
+        }
+        .server-node {
+            transition: all 0.3s ease;
+        }
+        .server-active {
+            border-color: #3b82f6 !important;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+            transform: translateY(-2px);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-slate-800 border-b border-slate-700 p-4 sticky top-0 z-50 shadow-md">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-blue-600 rounded-lg text-white">
+                    <i data-lucide="globe" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-xl text-white">DNS Nameserver Simulator</h1>
+                    <p class="text-xs text-slate-400">高校情報Ⅰ 教材：ドメイン名とIPアドレスの変換（名前解決）</p>
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <nav class="flex bg-slate-900 p-1 rounded-xl border border-slate-700 text-sm">
+                <button onclick="switchTab('visualizer')" id="tab-visualizer" class="tab-btn px-4 py-2 rounded-lg font-medium transition flex items-center gap-2 bg-blue-600 text-white">
+                    <i data-lucide="activity" class="w-4 h-4"></i> シミュレータ
+                </button>
+                <button onclick="switchTab('terminal')" id="tab-terminal" class="tab-btn px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+                    <i data-lucide="terminal" class="w-4 h-4"></i> コマンド(nslookup)
+                </button>
+                <button onclick="switchTab('quiz')" id="tab-quiz" class="tab-btn px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+                    <i data-lucide="help-circle" class="w-4 h-4"></i> 確認クイズ
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 gap-6">
+
+        <!-- TAB 1: VISUALIZER -->
+        <section id="sec-visualizer" class="space-y-6">
+            <!-- Control Panel -->
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex flex-1 items-center gap-3 w-full md:w-auto">
+                    <span class="text-slate-400 text-sm font-semibold whitespace-nowrap">Webサイト指定:</span>
+                    <div class="relative flex-1 max-w-md">
+                        <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500">https://</span>
+                        <select id="domainSelect" class="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-lg pl-20 pr-8 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <option value="www.mext.go.jp">www.mext.go.jp (文部科学省)</option>
+                            <option value="www.kantei.go.jp">www.kantei.go.jp (首相官邸)</option>
+                            <option value="www.example.com">www.example.com (サンプル)</option>
+                            <option value="news.yahoo.co.jp">news.yahoo.co.jp (Yahoo!ニュース)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 w-full md:w-auto justify-end">
+                    <label class="inline-flex items-center cursor-pointer text-sm text-slate-300">
+                        <input type="checkbox" id="cacheToggle" class="sr-only peer">
+                        <div class="relative w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        <span class="ms-2">キャッシュを使用</span>
+                    </label>
+
+                    <button id="btnStart" onclick="startSimulation()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-5 py-2 rounded-lg transition flex items-center gap-2 shadow-lg shadow-blue-900/40">
+                        <i data-lucide="play" class="w-4 h-4"></i> 名前解決の実行
+                    </button>
+                    <button id="btnReset" onclick="resetSimulation()" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-2 rounded-lg transition" title="リセット">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Network Topology Map -->
+            <div class="bg-slate-800/80 rounded-2xl border border-slate-700 p-6 shadow-xl relative min-h-[480px] flex flex-col justify-between overflow-hidden">
+                <!-- Background Grid Accent -->
+                <div class="absolute inset-0 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px] opacity-40"></div>
+
+                <!-- Top Row: Client & Local Cache -->
+                <div class="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                    <!-- Client PC -->
+                    <div id="node-client" class="server-node bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4 flex items-center gap-4">
+                        <div class="p-3 bg-indigo-500/20 text-indigo-400 rounded-xl">
+                            <i data-lucide="laptop" class="w-8 h-8"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 class="font-bold text-white">クライアント PC</h3>
+                                <span class="text-[10px] bg-slate-800 border border-slate-600 text-slate-300 px-2 py-0.5 rounded">スタブリゾルバ</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">IP: 192.168.1.100</p>
+                            <p class="text-xs text-indigo-300 mt-1 font-mono" id="clientStatus">待機中...</p>
+                        </div>
+                    </div>
+
+                    <!-- Cache DNS Server -->
+                    <div id="node-cache" class="server-node bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4 flex items-center gap-4 relative">
+                        <div class="p-3 bg-amber-500/20 text-amber-400 rounded-xl">
+                            <i data-lucide="server" class="w-8 h-8"></i>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center justify-between">
+                                <h3 class="font-bold text-white">キャッシュDNSサーバ</h3>
+                                <span class="text-[10px] bg-amber-950 border border-amber-700 text-amber-300 px-2 py-0.5 rounded">再帰的問い合わせ</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-1">プロバイダ等のDNS (8.8.8.8)</p>
+                            <div class="mt-2 flex items-center gap-2">
+                                <span class="text-xs text-slate-400">内部キャッシュ:</span>
+                                <span id="cacheBadge" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">空</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divider Arrow -->
+                <div class="relative z-10 flex justify-center items-center my-2 text-slate-500">
+                    <div class="h-px bg-slate-700 w-full max-w-xs"></div>
+                    <span class="px-3 text-xs text-slate-400 font-semibold bg-slate-800 rounded-full border border-slate-700">反復的問い合わせ（分散管理の構造）</span>
+                    <div class="h-px bg-slate-700 w-full max-w-xs"></div>
+                </div>
+
+                <!-- Bottom Row: Hierarchy DNS Servers -->
+                <div class="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <!-- Root Server -->
+                    <div id="node-root" class="server-node bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                                <i data-lucide="database" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-white">ルートDNSサーバ</h4>
+                                <p class="text-[10px] text-slate-400">トップレベル「 . 」を管理</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
+                            知っている情報:<br><span class="text-emerald-400">.jp / .com サーバの場所</span>
+                        </div>
+                    </div>
+
+                    <!-- TLD Server -->
+                    <div id="node-tld" class="server-node bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="p-2 bg-cyan-500/20 text-cyan-400 rounded-lg">
+                                <i data-lucide="folder-tree" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-white">TLD DNSサーバ</h4>
+                                <p class="text-[10px] text-slate-400">[.jp] などの末尾ドメイン管理</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
+                            知っている情報:<br><span class="text-cyan-400">go.jp / example.com の場所</span>
+                        </div>
+                    </div>
+
+                    <!-- Authoritative Server -->
+                    <div id="node-auth" class="server-node bg-slate-900/90 border-2 border-slate-700 rounded-xl p-4">
+                        <div class="flex items-center gap-3 mb-2">
+                            <div class="p-2 bg-rose-500/20 text-rose-400 rounded-lg">
+                                <i data-lucide="shield-check" class="w-6 h-6"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-sm text-white">権威DNSサーバ</h4>
+                                <p class="text-[10px] text-slate-400">該当ドメインのIPを直接保持</p>
+                            </div>
+                        </div>
+                        <div class="bg-slate-950 p-2 rounded text-[11px] font-mono text-slate-300 border border-slate-800">
+                            知っている情報:<br><span class="text-rose-400">ホスト名の最終IPアドレス</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Step Explanation Box -->
+                <div id="explanationBox" class="relative z-10 mt-6 bg-blue-950/60 border border-blue-800/80 rounded-xl p-4 flex items-start gap-3">
+                    <div class="p-2 bg-blue-600/30 text-blue-400 rounded-lg shrink-0 mt-0.5">
+                        <i data-lucide="info" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-blue-300 uppercase tracking-wider" id="stepTitle">ステータス: 準備完了</h4>
+                        <p class="text-sm text-slate-200 mt-0.5" id="stepDesc">「名前解決の実行」ボタンを押して、WebブラウザがIPアドレスを取得するプロセスを開始してください。</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal Log Stream -->
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xs shadow-inner">
+                <div class="flex justify-between items-center pb-2 border-b border-slate-800 text-slate-400 mb-2">
+                    <span class="flex items-center gap-2"><i data-lucide="list" class="w-4 h-4"></i> 通信パケットログ</span>
+                    <button onclick="clearLog()" class="hover:text-white transition">ログ消去</button>
+                </div>
+                <div id="logStream" class="h-32 overflow-y-auto space-y-1.5 custom-scrollbar text-slate-300">
+                    <div class="text-slate-500">// シミュレーションのログがここに表示されます</div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- TAB 2: TERMINAL (nslookup) -->
+        <section id="sec-terminal" class="hidden space-y-6">
+            <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+                <h2 class="text-lg font-bold text-white mb-2 flex items-center gap-2">
+                    <i data-lucide="terminal" class="text-blue-400"></i> DNS検索コマンド体験 (nslookup)
+                </h2>
+                <p class="text-sm text-slate-400 mb-6">ネットワーク管理者が利用する `nslookup` コマンドを使って、実際にドメイン名からDNSレコードを照会する動作を試せます。</p>
+
+                <!-- Input Controls -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">ドメイン名</label>
+                        <input type="text" id="cmdDomain" value="www.mext.go.jp" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-400 mb-1">レコードタイプ</label>
+                        <select id="cmdRecordType" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="A">A レコード (IPv4アドレス)</option>
+                            <option value="AAAA">AAAA レコード (IPv6アドレス)</option>
+                            <option value="MX">MX レコード (メールサーバ)</option>
+                            <option value="NS">NS レコード (DNSネームサーバ)</option>
+                            <option value="CNAME">CNAME レコード (別名)</option>
+                        </select>
+                    </div>
+                    <div class="flex items-end">
+                        <button onclick="runNslookup()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-2.5 rounded-lg transition flex justify-center items-center gap-2">
+                            <i data-lucide="search" class="w-4 h-4"></i> 問い合わせ実行
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Terminal Screen -->
+                <div class="bg-black rounded-xl p-4 border border-slate-800 font-mono text-sm text-emerald-400 shadow-2xl min-h-[280px]">
+                    <div class="flex items-center gap-2 pb-3 mb-3 border-b border-slate-900 text-slate-500 text-xs">
+                        <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                        <span class="ml-2 text-slate-400">Terminal - nslookup</span>
+                    </div>
+                    <div id="terminalOutput" class="space-y-2 text-xs md:text-sm">
+                        <p class="text-slate-500">$ nslookupコマンドを入力して「問い合わせ実行」を押してください。</p>
+                    </div>
+                </div>
+
+                <!-- Educational Info Box -->
+                <div class="mt-6 bg-slate-900/60 rounded-xl p-4 border border-slate-700/60">
+                    <h3 class="text-sm font-bold text-slate-200 mb-2">💡 主なDNSレコードの種類</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs text-slate-400">
+                        <div class="bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="font-bold text-blue-400">Aレコード:</span> ドメイン名をIPv4アドレス(例: 192.0.2.1)に対応付け
+                        </div>
+                        <div class="bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="font-bold text-purple-400">AAAAレコード:</span> ドメイン名をIPv6アドレスに対応付け
+                        </div>
+                        <div class="bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="font-bold text-amber-400">MXレコード:</span> 該当ドメインの電子メール送信用サーバを指定
+                        </div>
+                        <div class="bg-slate-800 p-2.5 rounded border border-slate-700">
+                            <span class="font-bold text-rose-400">NSレコード:</span> そのドメインの情報を管理する権威DNSサーバを指定
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+        <!-- TAB 3: QUIZ -->
+        <section id="sec-quiz" class="hidden space-y-6">
+            <div class="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl max-w-3xl mx-auto">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                            <i data-lucide="award" class="text-amber-400"></i> DNS知識確認テスト
+                        </h2>
+                        <p class="text-sm text-slate-400">高校情報Ⅰ教科書レベルの理解度チェックです</p>
+                    </div>
+                    <span id="quizScore" class="bg-blue-900/50 text-blue-300 font-bold px-3 py-1.5 rounded-lg border border-blue-700 text-sm">
+                        スコア: 0 / 4
+                    </span>
+                </div>
+
+                <!-- Quiz Container -->
+                <div id="quizContainer" class="space-y-6">
+                    <!-- Questions will be injected dynamically -->
+                </div>
+
+                <div class="mt-8 pt-4 border-t border-slate-700 flex justify-end">
+                    <button onclick="resetQuiz()" class="bg-slate-700 hover:bg-slate-600 text-white font-bold px-4 py-2 rounded-lg transition flex items-center gap-2">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i> テストやり直し
+                    </button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-slate-800 border-t border-slate-700 py-4 px-6 text-center text-xs text-slate-500">
+        <p>高校情報Ⅰ ネットワーク・教材シミュレータ | DNS (Domain Name System) 理解支援ツール</p>
+    </footer>
+
+    <!-- JS Logic -->
+    <script>
+        // Database of mock domain information
+        const domainDatabase = {
+            "www.mext.go.jp": {
+                ip: "210.140.222.10",
+                ipv6: "2001:2f8:222::10",
+                mx: "mail.mext.go.jp (pref=10)",
+                ns: "dns01.mext.go.jp",
+                cname: "なし (ホスト直接)",
+                rootServer: "Root-Server (.jpのネームサーバIPを案内)",
+                tldServer: "JP-TLD-Server (go.jpのネームサーバIPを案内)",
+                authServer: "mext.go.jp 権威DNSサーバ"
+            },
+            "www.kantei.go.jp": {
+                ip: "153.121.73.45",
+                ipv6: "2001:2f8:121::45",
+                mx: "mail.kantei.go.jp (pref=10)",
+                ns: "ns1.kantei.go.jp",
+                cname: "なし",
+                rootServer: "Root-Server (.jpのネームサーバIPを案内)",
+                tldServer: "JP-TLD-Server (go.jpのネームサーバIPを案内)",
+                authServer: "kantei.go.jp 権威DNSサーバ"
+            },
+            "www.example.com": {
+                ip: "93.184.216.34",
+                ipv6: "2606:2800:220:1:248:1893:25c8:1946",
+                mx: "mail.example.com (pref=5)",
+                ns: "a.iana-servers.net",
+                cname: "なし",
+                rootServer: "Root-Server (.comのネームサーバIPを案内)",
+                tldServer: "COM-TLD-Server (example.comのネームサーバIPを案内)",
+                authServer: "example.com 権威DNSサーバ"
+            },
+            "news.yahoo.co.jp": {
+                ip: "182.22.16.251",
+                ipv6: "2400:8900::182:22:16:251",
+                mx: "mx.yahoo.co.jp (pref=10)",
+                ns: "ns01.yahoo.co.jp",
+                cname: "news.wlb.yahoo.co.jp",
+                rootServer: "Root-Server (.jpのネームサーバIPを案内)",
+                tldServer: "JP-TLD-Server (co.jpのネームサーバIPを案内)",
+                authServer: "yahoo.co.jp 権威DNSサーバ"
+            }
+        };
+
+        // Simulated DNS Cache State
+        const cacheStore = new Set();
+
+        let isRunning = false;
+
+        // Initialize Lucide Icons
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            renderQuiz();
+        });
+
+        // Tab Switcher
+        function switchTab(tabName) {
+            ['visualizer', 'terminal', 'quiz'].forEach(t => {
+                document.getElementById(`sec-${t}`).classList.add('hidden');
+                const btn = document.getElementById(`tab-${t}`);
+                btn.classList.remove('bg-blue-600', 'text-white');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(`sec-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tab-${tabName}`);
+            activeBtn.classList.add('bg-blue-600', 'text-white');
+            activeBtn.classList.remove('text-slate-400');
+        }
+
+        // Helper: Logging Function
+        function addLog(message, type = 'info') {
+            const stream = document.getElementById('logStream');
+            const entry = document.createElement('div');
+            const time = new Date().toLocaleTimeString();
+
+            let colorClass = 'text-slate-300';
+            if (type === 'req') colorClass = 'text-blue-400';
+            if (type === 'res') colorClass = 'text-emerald-400';
+            if (type === 'cache') colorClass = 'text-amber-400 font-bold';
+
+            entry.className = `flex gap-2 ${colorClass}`;
+            entry.innerHTML = `<span class="text-slate-600">[${time}]</span> <span>${message}</span>`;
+            stream.appendChild(entry);
+            stream.scrollTop = stream.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('logStream').innerHTML = '<div class="text-slate-500">// シミュレーションのログがここに表示されます</div>';
+        }
+
+        // Set UI Highlight for Node
+        function setNodeActive(nodeId, active) {
+            const el = document.getElementById(`node-${nodeId}`);
+            if (!el) return;
+            if (active) {
+                el.classList.add('server-active');
+            } else {
+                el.classList.remove('server-active');
+            }
+        }
+
+        function resetAllNodes() {
+            ['client', 'cache', 'root', 'tld', 'auth'].forEach(n => setNodeActive(n, false));
+        }
+
+        function updateStepInfo(title, desc) {
+            document.getElementById('stepTitle').innerText = title;
+            document.getElementById('stepDesc').innerText = desc;
+        }
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        // Start Visualization Simulation
+        async function startSimulation() {
+            if (isRunning) return;
+            isRunning = true;
+
+            const domain = document.getElementById('domainSelect').value;
+            const useCache = document.getElementById('cacheToggle').checked;
+            const info = domainDatabase[domain];
+
+            document.getElementById('btnStart').disabled = true;
+            document.getElementById('btnStart').classList.add('opacity-50');
+
+            resetAllNodes();
+            addLog(`--- 名前解決セッション開始: ${domain} ---`, 'info');
+
+            // Step 1: Client Request
+            setNodeActive('client', true);
+            document.getElementById('clientStatus').innerText = `問い合わせ中: ${domain}`;
+            updateStepInfo("STEP 1: クライアントからの問い合わせ", `PC(Webブラウザ)が「${domain}」のIPアドレスを知るため、設定されているキャッシュDNSサーバへ問合せを行います(再帰的問い合わせ)。`);
+            addLog(`[PC] -> [キャッシュDNS] 名前解決要求: ${domain}`, 'req');
+            await sleep(2200);
+
+            // Step 2: Cache Server Check
+            setNodeActive('client', false);
+            setNodeActive('cache', true);
+
+            if (useCache && cacheStore.has(domain)) {
+                // CACHE HIT
+                updateStepInfo("STEP 2: キャッシュヒット！", `キャッシュDNSサーバ内に「${domain}」のIPアドレス (${info.ip}) が保存されていました。上位サーバへの問い合わせを省略して高速に応答します。`);
+                addLog(`[キャッシュDNS] キャッシュに該当データ発見！ (HIT: ${info.ip})`, 'cache');
+                await sleep(2000);
+
+                setNodeActive('cache', false);
+                setNodeActive('client', true);
+                document.getElementById('clientStatus').innerText = `解決完了: ${info.ip}`;
+                updateStepInfo("完了: IPアドレス取得成功", `PCは ${info.ip} を取得し、Webサイトへのアクセスを開始します。`);
+                addLog(`[キャッシュDNS] -> [PC] 応答: ${domain} = ${info.ip} (キャッシュより)`, 'res');
+
+                finishSimulation();
+                return;
+            }
+
+            // CACHE MISS
+            updateStepInfo("STEP 2: キャッシュなし（反復問い合わせの開始）", `キャッシュDNSサーバに情報がなかったため、ルートDNSサーバから順に「反復的問い合わせ」を開始します。`);
+            addLog(`[キャッシュDNS] キャッシュ未保持。ルートサーバへ反復問い合わせを開始...`, 'req');
+            await sleep(2200);
+
+            // Step 3: Root Server Query
+            setNodeActive('cache', false);
+            setNodeActive('root', true);
+            updateStepInfo("STEP 3: ルートDNSサーバへの問い合わせ", `「${domain}」のトップレベルドメイン (.jp または .com) を管理するTLDサーバの場所を教えてもらいます。`);
+            addLog(`[キャッシュDNS] -> [ルートDNS] 「${domain} の管理者は誰ですか？」`, 'req');
+            await sleep(2200);
+
+            addLog(`[ルートDNS] -> [キャッシュDNS] 「末尾を管理する TLDサーバを参照してください」`, 'res');
+            await sleep(1800);
+
+            // Step 4: TLD Server Query
+            setNodeActive('root', false);
+            setNodeActive('tld', true);
+            updateStepInfo("STEP 4: TLD DNSサーバへの問い合わせ", `TLDサーバに問い合わせ、「${domain}」の詳細情報を保持する権威DNSサーバの場所を取得します。`);
+            addLog(`[キャッシュDNS] -> [TLD DNS] 「${domain} のIPを知る権威サーバはどこですか？」`, 'req');
+            await sleep(2200);
+
+            addLog(`[TLD DNS] -> [キャッシュDNS] 「該当ドメインの権威DNSサーバを案内します」`, 'res');
+            await sleep(1800);
+
+            // Step 5: Authoritative Server Query
+            setNodeActive('tld', false);
+            setNodeActive('auth', true);
+            updateStepInfo("STEP 5: 権威DNSサーバへの問い合わせ", `ドメインの所有者が管理する「権威DNSサーバ」へ最終的なIPアドレスを問い合わせます。`);
+            addLog(`[キャッシュDNS] -> [権威DNS] 「${domain} のIPアドレスを教えてください」`, 'req');
+            await sleep(2200);
+
+            addLog(`[権威DNS] -> [キャッシュDNS] 最終応答: 「IPは ${info.ip} です」`, 'res');
+            await sleep(2000);
+
+            // Save to Cache
+            cacheStore.add(domain);
+            document.getElementById('cacheBadge').innerText = `${cacheStore.size}件 保持中`;
+            document.getElementById('cacheBadge').className = "text-[10px] px-2 py-0.5 rounded bg-amber-900/80 text-amber-300 border border-amber-600 font-bold";
+
+            // Step 6: Return to Client
+            setNodeActive('auth', false);
+            setNodeActive('cache', true);
+            updateStepInfo("STEP 6: 結果の返答とキャッシュ保存", `キャッシュDNSサーバは取得したIP (${info.ip}) を自身のメモリに記憶（キャッシュ）し、PCへ最終結果を返します。`);
+            addLog(`[キャッシュDNS] データをローカルにキャッシュ保存完了`, 'cache');
+            await sleep(1800);
+
+            setNodeActive('cache', false);
+            setNodeActive('client', true);
+            document.getElementById('clientStatus').innerText = `解決完了: ${info.ip}`;
+            updateStepInfo("名前解決完了！", `PCは目的のIPアドレス (${info.ip}) を取得しました。これでWebサーバ(HTTP/HTTPS)へ接続できるようになります。`);
+            addLog(`[キャッシュDNS] -> [PC] 最終応答: ${domain} = ${info.ip}`, 'res');
+
+            finishSimulation();
+        }
+
+        function finishSimulation() {
+            isRunning = false;
+            document.getElementById('btnStart').disabled = false;
+            document.getElementById('btnStart').classList.remove('opacity-50');
+        }
+
+        function resetSimulation() {
+            if (isRunning) return;
+            resetAllNodes();
+            document.getElementById('clientStatus').innerText = "待機中...";
+            updateStepInfo("ステータス: 準備完了", "「名前解決の実行」ボタンを押すとシミュレーションが始まります。");
+            addLog("--- シミュレータをリセットしました ---", 'info');
+        }
+
+        // Terminal Tab nslookup Simulator
+        function runNslookup() {
+            const domain = document.getElementById('cmdDomain').value.trim();
+            const recordType = document.getElementById('cmdRecordType').value;
+            const output = document.getElementById('terminalOutput');
+
+            if (!domain) return;
+
+            const info = domainDatabase[domain] || {
+                ip: "192.0.2.123",
+                ipv6: "2001:db8::123",
+                mx: `mail.${domain} (pref=10)`,
+                ns: `ns1.${domain}`,
+                cname: "なし"
+            };
+
+            let answerSection = '';
+            if (recordType === 'A') {
+                answerSection = `Name:\t${domain}\nAddress: ${info.ip}`;
+            } else if (recordType === 'AAAA') {
+                answerSection = `Name:\t${domain}\nAddress: ${info.ipv6}`;
+            } else if (recordType === 'MX') {
+                answerSection = `${domain}\tmail exchanger = ${info.mx}`;
+            } else if (recordType === 'NS') {
+                answerSection = `${domain}\tnameserver = ${info.ns}`;
+            } else if (recordType === 'CNAME') {
+                answerSection = `${domain}\tcanonical name = ${info.cname}`;
+            }
+
+            output.innerHTML = `
+                <p class="text-slate-300">$ nslookup -type=${recordType} ${domain}</p>
+                <p class="text-slate-500">Server:\t\t8.8.8.8 (Default Local DNS Server)</p>
+                <p class="text-slate-500">Address:\t8.8.8.8#53</p>
+                <br>
+                <p class="text-slate-400">Non-authoritative answer:</p>
+                <p class="text-emerald-300 font-semibold whitespace-pre-wrap">${answerSection}</p>
+                <br>
+                <p class="text-slate-500">// 照会完了 (ステータス: NOERROR)</p>
+            `;
+        }
+
+
+        // QUIZ DATA & ENGINE
+        const quizData = [
+            {
+                question: "DNS (Domain Name System) の主な役割として最も適切なものはどれですか？",
+                options: [
+                    "Webページの暗号化通信(HTTPS)を行う",
+                    "人間が覚えやすいドメイン名とIPアドレスを相互に変換する",
+                    "ルーターのパスワードを自動管理する",
+                    "メールのウイルス感染を自動で検知する"
+                ],
+                correct: 1,
+                explanation: "DNSは「www.example.com」のような人間にとって分かりやすいドメイン名と、コンピュータが通信に使う数字の「IPアドレス」を変換（名前解決）する仕組みです。"
+            },
+            {
+                question: "ドメイン「www.mext.go.jp」において、階層構造の最頂点（ルート）から見て最初に対応するドメイン階層はどれですか？",
+                options: [
+                    "www",
+                    "mext",
+                    "go",
+                    ".jp (トップレベルドメイン)"
+                ],
+                correct: 3,
+                explanation: "ドメイン名は右側ほど上位の階層を表します。末尾の「.jp」は国別コードトップレベルドメイン（ccTLD）と呼ばれます。"
+            },
+            {
+                question: "一度問い合わせたDNSの結果を一時的に保存し、次回から高速に応答する仕組みを何と呼びますか？",
+                options: [
+                    "DNSキャッシュ",
+                    "DNSルーティング",
+                    "プロキシフィルタ",
+                    "ポートフォワーディング"
+                ],
+                correct: 0,
+                explanation: "DNSキャッシュは一度問い合わせた結果を一定時間(TTL)保存し、ネットワークの負荷軽減と高速化を図る仕組みです。"
+            },
+            {
+                question: "WebサーバのIPv4アドレスを定義する代表的なDNSレコードの種類はどれですか？",
+                options: [
+                    "MXレコード",
+                    "Aレコード",
+                    "CNAMEレコード",
+                    "TXTレコード"
+                ],
+                correct: 1,
+                explanation: "Aレコードはドメイン名をIPv4アドレスに対応付けるレコードです。（IPv6の場合はAAAAレコードになります）"
+            }
+        ];
+
+        let quizUserAnswers = {};
+
+        function renderQuiz() {
+            const container = document.getElementById('quizContainer');
+            container.innerHTML = '';
+
+            quizData.forEach((q, idx) => {
+                const card = document.createElement('div');
+                card.className = "bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-4";
+
+                let optionsHTML = '';
+                q.options.forEach((opt, optIdx) => {
+                    optionsHTML += `
+                        <button onclick="selectQuizAnswer(${idx}, ${optIdx})" id="quiz-btn-${idx}-${optIdx}" 
+                                class="w-full text-left p-3 rounded-lg border border-slate-700 bg-slate-800/60 hover:bg-slate-700 transition text-sm flex items-center justify-between">
+                            <span>${optIdx + 1}. ${opt}</span>
+                            <i data-lucide="circle" class="w-4 h-4 text-slate-500"></i>
+                        </button>
+                    `;
+                });
+
+                card.innerHTML = `
+                    <div class="flex items-start gap-3">
+                        <span class="bg-blue-600/30 text-blue-300 font-bold px-2.5 py-1 rounded text-xs shrink-0">問 ${idx + 1}</span>
+                        <h3 class="font-bold text-white text-sm md:text-base">${q.question}</h3>
+                    </div>
+                    <div class="space-y-2 pl-0 sm:pl-9">
+                        ${optionsHTML}
+                    </div>
+                    <div id="quiz-exp-${idx}" class="hidden mt-3 p-3 bg-slate-950 rounded-lg text-xs border border-slate-800 text-slate-300 pl-0 sm:pl-9">
+                        <!-- Explanation -->
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+            lucide.createIcons();
+        }
+
+        function selectQuizAnswer(qIdx, optIdx) {
+            if (quizUserAnswers[qIdx] !== undefined) return; // Prevent re-answer
+
+            quizUserAnswers[qIdx] = optIdx;
+            const q = quizData[qIdx];
+            const isCorrect = optIdx === q.correct;
+
+            // Highlight chosen button
+            const btn = document.getElementById(`quiz-btn-${qIdx}-${optIdx}`);
+            if (isCorrect) {
+                btn.className = "w-full text-left p-3 rounded-lg border-2 border-emerald-500 bg-emerald-950/40 text-emerald-200 text-sm flex items-center justify-between font-bold";
+                btn.querySelector('i').replaceWith(lucide.createIcons({
+                    icons: { 'check-circle': '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' }
+                }));
+            } else {
+                btn.className = "w-full text-left p-3 rounded-lg border-2 border-rose-500 bg-rose-950/40 text-rose-200 text-sm flex items-center justify-between font-bold";
+                // Highlight correct one too
+                const correctBtn = document.getElementById(`quiz-btn-${qIdx}-${q.correct}`);
+                correctBtn.classList.add('border-emerald-500', 'bg-emerald-950/30');
+            }
+
+            // Show explanation
+            const expBox = document.getElementById(`quiz-exp-${qIdx}`);
+            expBox.classList.remove('hidden');
+            expBox.innerHTML = `
+                <p class="font-bold ${isCorrect ? 'text-emerald-400' : 'text-rose-400'} mb-1">
+                    ${isCorrect ? '正解です！' : '不正解です'}
+                </p>
+                <p>${q.explanation}</p>
+            `;
+
+            updateQuizScore();
+        }
+
+        function updateQuizScore() {
+            let score = 0;
+            Object.keys(quizUserAnswers).forEach(qIdx => {
+                if (quizUserAnswers[qIdx] === quizData[qIdx].correct) {
+                    score++;
+                }
+            });
+            document.getElementById('quizScore').innerText = `スコア: ${score} / ${quizData.length}`;
+        }
+
+        function resetQuiz() {
+            quizUserAnswers = {};
+            document.getElementById('quizScore').innerText = `スコア: 0 / ${quizData.length}`;
+            renderQuiz();
+        }
+    </script>
+</body>
+</html>
